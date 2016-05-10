@@ -3,16 +3,31 @@
 # this follows the install guide from here:
 # http://docs.openstack.org/liberty/install-guide-ubuntu/
 # This will configure networking option 2 (self service networks)
+# Pre-reqs: 
+# ubuntu 14.04
+# apt-get install software-properties-common
+# add-apt-repository cloud-archive:liberty
+# apt-get update && apt-get dist-upgrade
+# apt-get install python-openstackclient
+#
 # nembery@gmail.com 11-17-15
 
-if [ x$1x == xx ];
+if [ x$2x == xx ];
  then
-  echo "usage: install_openstack_liberty.sh ip_address"
+  echo "usage: install_openstack_liberty.sh ip_address management_ip"
+  echo "ip_address should be your data network where compute nodes connect to this control node"
   exit 1
 fi
 
 IP=$1
-echo "Using $IP"
+MGMT_IP=$2
+
+echo "Using $IP for openstack components"
+
+function fail {
+	echo "welp!"
+	exit 1
+}
 
 # this is the subnet for use with a public provider network
 # i.e. this should be your underlay network
@@ -33,18 +48,27 @@ RABBIT_GUEST_PASS=$(openssl rand -hex 10)
 RABBIT_OS_PASS=$(openssl rand -hex 10)
 KEYSTONE_PASS=$(openssl rand -hex 10)
 
-function fail {
-	echo "welp!"
-	exit 1
-}
-
 export DEBIAN_FRONTEND=noninteractive
 
-echo "install prereqs"
-apt-get install ntp curl openssl python-keyring -y
+# copy all output to a logfile
+exec > >(tee -i /var/log/openstack_install.log)
+exec 2>&1
 
+echo "--------------------------"
+echo "install prereqs"
+echo "--------------------------"
+
+#apt-get update
+#apt-get install software-properties-common -y || fail
+#add-apt-repository cloud-archive:liberty -y || fail
+#apt-get update && apt-get dist-upgrade -y || fail
+apt-get install python-openstackclient -y || fail
+apt-get install ntp curl openssl python-keyring -y || fail
+
+echo "--------------------------"
 echo "install mysql / mariadb"
-apt-get install mariadb-server python-pymysql -y
+echo "--------------------------"
+apt-get install mariadb-server python-pymysql -y || fail
 
 cat <<EOF > /etc/mysql/conf.d/mysqld_openstack.cnf
 [mysqld]
@@ -59,23 +83,35 @@ EOF
 # set mysql password 
 mysqladmin -u root password $MYSQL_PASS || fail
 
-service mysql restart 
+service mysql restart || fail
 
 #maybe you should do this? I leave it off to keep everything automated
 #mysql_secure_installation
 
-echo "install mongodb"
-apt-get install mongodb-server mongodb-clients python-pymongo -y
-sed -i.bkup -e 's/bind_ip = 127.0.0.1/bind_ip = $IP/' /etc/mongodb.con
+echo "--------------------------"
+echo " install mongodb"
+echo "--------------------------"
+apt-get install mongodb-server mongodb-clients python-pymongo -y || fail
+sed -i.bkup -e 's/bind_ip = 127.0.0.1/bind_ip = $IP/' /etc/mongodb.conf
 echo "smallfiles = true" >> /etc/mongodb.conf
 service mongodb restart && sleep 3
 
+echo "--------------------------"
+echo " install rabbitmq "
+echo "--------------------------"
 apt-get install rabbitmq-server -y && sleep 3
-rabbitmqctl change_password guest $RABBIT_GUEST_PASS
-rabbitmqctl add_user openstack $RABBIT_OS_PASS
-rabbitmqctl set_permissions openstack ".*" ".*" ".*"
 
-mysqladmin -p$MYSQL_PASS create keystone
+echo "--------------------------"
+echo " configure rabbitmq openstack user "
+echo "--------------------------"
+rabbitmqctl change_password guest $RABBIT_GUEST_PASS || fail
+rabbitmqctl add_user openstack $RABBIT_OS_PASS || fail
+rabbitmqctl set_permissions openstack ".*" ".*" ".*" || fail
+
+echo "--------------------------"
+echo " creating keystone mysql db "
+echo "--------------------------"
+mysqladmin -p$MYSQL_PASS create keystone || fail
 
 mysql -u root -p$MYSQL_PASS -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'localhost' IDENTIFIED BY '$KEYSTONE_PASS';"
 mysql -u root -p$MYSQL_PASS -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '$KEYSTONE_PASS';"
@@ -83,6 +119,9 @@ mysql -u root -p$MYSQL_PASS -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'
 # generate admin_token
 ADMIN_TOKEN=$(openssl rand -hex 10)
 
+echo "--------------------------"
+echo " install keystone"
+echo "--------------------------"
 echo "manual" > /etc/init/keystone.override
 apt-get install keystone apache2 libapache2-mod-wsgi memcached python-memcache -y
 
@@ -108,6 +147,9 @@ EOF
 # rm /etc/init/keystone.override
 su -s /bin/sh -c "keystone-manage db_sync" keystone
 
+echo "--------------------------"
+echo " Configure apache "
+echo "--------------------------"
 echo ServerName $IP >> /etc/apache2/apache2.conf
 
 cat <<EOF > /etc/apache2/sites-available/wsgi-keystone.conf
@@ -163,6 +205,9 @@ EOF
 
 ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
 
+echo "--------------------------"
+echo " Restarting apache "
+echo "--------------------------"
 service apache2 restart && sleep 3
 
 rm -f /var/lib/keystone/keystone.db
@@ -170,6 +215,11 @@ rm -f /var/lib/keystone/keystone.db
 export OS_TOKEN=$ADMIN_TOKEN
 export OS_URL=http://$IP:35357/v3
 export OS_IDENTITY_API_VERSION=3
+
+echo "--------------------------"
+echo " Configuring openstack    "
+echo "--------------------------"
+
 openstack service create \
   --name keystone --description "OpenStack Identity" identity || fail
 
@@ -213,7 +263,7 @@ openstack role add --project demo --user demo user || fail
 echo "does keystone need to catch up?"
 sleep 3
 
-cat <<EOF >./admin-openrc.sh
+cat <<EOF >/root/admin-openrc.sh
 export OS_PROJECT_DOMAIN_ID=default
 export OS_USER_DOMAIN_ID=default
 export OS_PROJECT_NAME=admin
@@ -224,9 +274,13 @@ export OS_AUTH_URL=http://$IP:35357/v3
 export OS_IDENTITY_API_VERSION=3
 export OS_IMAGE_API_VERSION=2
 export MYSQL_PASS=$MYSQL_PASS
+export NEUTRON_PASS=$NEUTRON_PASS
+export NOVA_PASS=$NOVA_PASS
+export RABBIT_OS_PASS=$RABBIT_OS_PASS
+export HEAT_PASS=$HEAT_PASS
 EOF
 
-cat <<EOF >./demo-openrc.sh
+cat <<EOF >/root/demo-openrc.sh
 export OS_PROJECT_DOMAIN_ID=default
 export OS_USER_DOMAIN_ID=default
 export OS_PROJECT_NAME=demo
@@ -241,22 +295,34 @@ EOF
 echo "unset temporary auth mechanism"
 unset OS_TOKEN OS_URL
 
-echo "Verify demo tenant"
-source demo-openrc.sh
+echo "--------------------------"
+echo " Verify demo tenant "
+echo "--------------------------"
+
+source /root/demo-openrc.sh
 openstack token issue || fail
 
-echo "Verify admin tenant"
-source admin-openrc.sh
+echo "--------------------------"
+echo " Verify admin tenant "
+echo "--------------------------"
+
+source /root/admin-openrc.sh
 openstack token issue || fail
 
+echo "--------------------------"
+echo " Installing glance "
+echo "--------------------------"
 
-echo "Installing glance"
 mysqladmin -p$MYSQL_PASS create glance
 
 mysql -u root -p$MYSQL_PASS -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'localhost' IDENTIFIED BY '$GLANCE_PASS';"
 mysql -u root -p$MYSQL_PASS -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY '$GLANCE_PASS';"
 
 source /root/admin-openrc.sh
+
+echo "--------------------------"
+echo " Creating openstack users "
+echo "--------------------------"
 
 openstack user create --domain default --password $GLANCE_PASS glance  || fail
 openstack role add --project service --user glance admin || fail
@@ -328,9 +394,9 @@ echo "Let glance start up!"
 sleep 3
 
 echo "Verify glance"
-#wget http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
+wget http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
 glance image-create --name "cirros" \
-  --file /home/juniper/cirros-0.3.4-x86_64-disk.img \
+  --file $(pwd)/cirros-0.3.4-x86_64-disk.img \
   --disk-format qcow2 --container-format bare \
   --visibility public --progress || fail
 
@@ -408,9 +474,9 @@ username = nova
 password = $NOVA_PASS
 [vnc]
 enabled = True
-vncserver_listen = $IP
+vncserver_listen = 0.0.0.0
 vncserver_proxyclient_address = $IP
-novncproxy_base_url = http://$IP:6080/vnc_auto.html
+novncproxy_base_url = http://$MGMT_IP:6080/vnc_auto.html
 [glance]
 host = $IP
 [oslo_concurrency]
@@ -605,8 +671,30 @@ service neutron-metadata-agent restart
 
 rm -f /var/lib/neutron/neutron.sqlite
 
-echo "install dashboard"
+echo "--------------------------"
+echo " Installing Horizon Dashboard "
+echo "--------------------------"
+
 apt-get install openstack-dashboard -y
+
+sed -i.default-role.bkup -e 's/OPENSTACK_KEYSTONE_DEFAULT_ROLE = "_member_"/OPENSTACK_KEYSTONE_DEFAULT_ROLE = "user"/' /etc/openstack-dashboard/local_settings.py
+sed -i.multi-domain.bkup -e 's/#OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = False/OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True/' /etc/openstack-dashboard/local_settings.py
+
+cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+OPENSTACK_API_VERSIONS = {
+    "identity": 3,
+    "volume": 2,
+}
+EOF
+
+echo "--------------------------"
+echo " Reloading apache "
+echo "--------------------------"
+service apache2 restart && sleep 3
+
+echo "--------------------------"
+echo " Installing HEAT "
+echo "--------------------------"
 
 mysqladmin -p$MYSQL_PASS create heat
 mysql -u root -p$MYSQL_PASS -e "GRANT ALL PRIVILEGES ON heat.* TO 'heat'@'localhost' IDENTIFIED BY '$HEAT_PASS';"
