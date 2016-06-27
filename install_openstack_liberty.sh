@@ -477,6 +477,11 @@ enabled = True
 vncserver_listen = 0.0.0.0
 vncserver_proxyclient_address = $IP
 novncproxy_base_url = http://$MGMT_IP:6080/vnc_auto.html
+[serial_console]
+enabled = True
+base_url = ws://$MGMT_IP:6083/
+listen = $IP
+proxyclient_address = $IP
 [glance]
 host = $IP
 [oslo_concurrency]

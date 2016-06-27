@@ -3,14 +3,14 @@
 
 if [ x$2x == xx ];
  then
-  echo "usage: install_openstack_liberty.sh controller_address local_address"
+  echo "usage: install_openstack_compute.sh controller_address local_address"
   exit 1
 fi
 
-IP=$1
-OVERLAY_IP=$2
-echo "Using $IP for openstack controller"
-echo "Using $OVERLAY_IP for communication to openstack controller"
+CONTROLLER_IP=$1
+COMPUTE_IP=$2
+echo "Using $CONTROLLER_IP for openstack controller"
+echo "Using $COMPUTE_IP for communication to openstack controller"
 
 function fail {
 	echo "welp!"
@@ -26,7 +26,7 @@ echo "--------------------------------"
 echo " Getting env from controller"
 echo "--------------------------------"
 
-scp root@$IP:/root/admin-openrc.sh /root/admin-openrc.sh || fail
+scp root@$CONTROLLER_IP:/root/admin-openrc.sh /root/admin-openrc.sh || fail
 source /root/admin-openrc.sh || fail
 
 echo "--------------------------------"
@@ -34,7 +34,7 @@ echo " Syncing already downloaded packages "
 echo " This assumes controller has been recently updated "
 echo "--------------------------------"
 
-rsync -avz root@$IP:/var/cache/apt/archives/ /var/cache/apt/archives/ || fail
+rsync -avz root@$CONTROLLER_IP:/var/cache/apt/archives/ /var/cache/apt/archives/ || fail
 
 echo "--------------------------------"
 echo " add cloud-archive:liberty      "
@@ -88,7 +88,7 @@ api_paste_config=/etc/nova/api-paste.ini
 enabled_apis=ec2,osapi_compute,metadata
 rpc_backend = rabbit
 auth_strategy = keystone
-my_ip = $OVERLAY_IP
+my_ip = $COMPUTE_IP
 network_api_class = nova.network.neutronv2.api.API
 security_group_api = neutron
 linuxnet_interface_driver = nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
@@ -96,13 +96,13 @@ firewall_driver = nova.virt.firewall.NoopFirewallDriver
 verbose = True
 
 [oslo_messaging_rabbit]
-rabbit_host = $IP
+rabbit_host = $CONTROLLER_IP
 rabbit_userid = openstack
 rabbit_password = $RABBIT_OS_PASS
 
 [keystone_authtoken]
-auth_uri = http://$IP:5000
-auth_url = http://$IP:35357
+auth_uri = http://$CONTROLLER_IP:5000
+auth_url = http://$CONTROLLER_IP:35357
 auth_plugin = password
 project_domain_id = default
 user_domain_id = default
@@ -113,11 +113,17 @@ password = $NOVA_PASS
 [vnc]
 enabled = True
 vncserver_listen = 0.0.0.0
-vncserver_proxyclient_address = $OVERLAY_IP
-novncproxy_base_url = http://$IP:6080/vnc_auto.html
+vncserver_proxyclient_address = $COMPUTE_IP
+novncproxy_base_url = http://$CONTROLLER_IP:6080/vnc_auto.html
+
+[serial_console]
+enabled = True
+base_url = ws://$CONTROLLER_IP:6083/
+listen = $COMPUTE_IP
+proxyclient_address = $COMPUTE_IP
 
 [glance]
-host = $IP
+host = $CONTROLLER_IP
 
 [oslo_concurrency]
 lock_path = /var/lib/nova/tmp
@@ -126,8 +132,8 @@ lock_path = /var/lib/nova/tmp
 virt_type = qemu
 
 [neutron]
-url = http://$IP:9696
-auth_url = http://$IP:35357
+url = http://$CONTROLLER_IP:9696
+auth_url = http://$CONTROLLER_IP:35357
 auth_plugin = password
 project_domain_id = default
 user_domain_id = default
@@ -163,8 +169,8 @@ rpc_backend = rabbit
 [agent]
 root_helper = sudo /usr/bin/neutron-rootwrap /etc/neutron/rootwrap.conf
 [keystone_authtoken]
-auth_uri = http://$IP:5000
-auth_url = http://$IP:35357
+auth_uri = http://$CONTROLLER_IP:5000
+auth_url = http://$CONTROLLER_IP:35357
 auth_plugin = password
 project_domain_id = default
 user_domain_id = default
@@ -180,7 +186,7 @@ lock_path = /var/lib/neutron/lock
 [oslo_messaging_amqp]
 [oslo_messaging_qpid]
 [oslo_messaging_rabbit]
-rabbit_host = $IP
+rabbit_host = $CONTROLLER_IP
 rabbit_userid = openstack
 rabbit_password = $RABBIT_OS_PASS
 EOF
@@ -193,7 +199,7 @@ physical_interface_mappings = public:eth0
 [vxlan]
 enable_vxlan = True
 vxlan_group = 224.0.0.1
-local_ip = $OVERLAY_IP
+local_ip = $COMPUTE_IP
 l2_population = True
 [agent]
 prevent_arp_spoofing = True
