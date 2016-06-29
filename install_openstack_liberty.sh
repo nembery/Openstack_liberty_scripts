@@ -22,19 +22,14 @@ fi
 IP=$1
 MGMT_IP=$2
 
-echo "Using $IP for openstack components"
-
-function fail {
-	echo "welp!"
-	exit 1
-}
-
 # this is the subnet for use with a public provider network
 # i.e. this should be your underlay network
 NET_CIDR=10.0.1.0/24
 NET_START=10.0.1.129
 NET_END=10.0.1.253
 
+# which NIC should be used for underlay network?
+EXT_INTERFACE=eth0
 # defaults
 ADMIN_PASS=secret
 DEMO_PASS=demo
@@ -47,6 +42,13 @@ HEAT_PASS=$(openssl rand -hex 10)
 RABBIT_GUEST_PASS=$(openssl rand -hex 10)
 RABBIT_OS_PASS=$(openssl rand -hex 10)
 KEYSTONE_PASS=$(openssl rand -hex 10)
+
+echo "Using $IP for openstack components"
+
+function fail {
+	echo "welp!"
+	exit 1
+}
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -422,7 +424,7 @@ openstack endpoint create --region RegionOne \
   compute admin http://$IP:8774/v2/%\(tenant_id\)s || fail
 
 apt-get install nova-api nova-cert nova-conductor \
-  nova-consoleauth nova-novncproxy nova-scheduler \
+  nova-consoleauth nova-novncproxy nova-serialproxy nova-scheduler \
   python-novaclient -y
 
 echo "Determine hypervisor type required here"
@@ -449,14 +451,17 @@ verbose=True
 rpc_backend = rabbit
 auth_strategy = keystone
 my_ip = $IP
-#metadata_workers = 2
-#osapi_workers = 2
+metadata_workers = 2
+osapi_workers = 2
+osapi_compute_workers = 2
 #ec2_workers = 2
 network_api_class = nova.network.neutronv2.api.API
 security_group_api = neutron
 linuxnet_interface_driver = nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
 firewall_driver = nova.virt.firewall.NoopFirewallDriver
 enabled_apis=osapi_compute,metadata
+[conductor]
+workers = 2
 [database]
 connection = mysql+pymysql://nova:$NOVA_PASS@$IP/nova
 [oslo_messaging_rabbit]
@@ -612,7 +617,7 @@ cp /etc/neutron/plugins/ml2/linuxbridge_agent.ini /etc/neutron/plugins/ml2/linux
 
 cat <<EOF >/etc/neutron/plugins/ml2/linuxbridge_agent.ini
 [linux_bridge]
-physical_interface_mappings = public:eth1
+physical_interface_mappings = public:$EXT_INTERFACE
 [vxlan]
 enable_vxlan = True
 local_ip = $IP
@@ -793,8 +798,8 @@ service heat-engine restart
 rm -f /var/lib/heat/heat.sqlite
 
 echo "Creating provider flat network"
-neutron net-create public-br-eth1 --shared --provider:network_type flat --provider:physical_network public --router:external True
-neutron subnet-create --ip-version 4 public-br-eth1 $NET_CIDR --allocation-pool start=$NET_START,end=$NET_END --dns_nameservers list=true 8.8.4.4 8.8.8.8
+neutron net-create public-br-$EXT_INTERFACE --shared --provider:network_type flat --provider:physical_network public --router:external True
+neutron subnet-create --ip-version 4 public-br-$EXT_INTERFACE $NET_CIDR --allocation-pool start=$NET_START,end=$NET_END --dns_nameservers list=true 8.8.4.4 8.8.8.8
 
 sleep 1
 nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
