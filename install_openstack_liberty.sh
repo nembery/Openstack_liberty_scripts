@@ -618,9 +618,9 @@ enable_vxlan = True
 local_ip = $IP
 l2_population = True
 [agent]
-prevent_arp_spoofing = True
+prevent_arp_spoofing = False
 [securitygroup]
-enable_security_group = True
+enable_security_group = False
 firewall_driver = neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
 EOF
 
