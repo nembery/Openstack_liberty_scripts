@@ -621,7 +621,8 @@ physical_interface_mappings = public:$EXT_INTERFACE
 [vxlan]
 enable_vxlan = True
 local_ip = $IP
-l2_population = True
+# required to be false in Liberty to ensure vxlan interfaces to do not proxy arp
+l2_population = False
 [agent]
 prevent_arp_spoofing = False
 [securitygroup]

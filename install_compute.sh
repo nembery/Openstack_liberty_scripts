@@ -200,9 +200,13 @@ physical_interface_mappings = public:eth0
 enable_vxlan = True
 vxlan_group = 224.0.0.1
 local_ip = $COMPUTE_IP
-l2_population = True
+# for liberty this is required to be false to ensure vxlan interfaces do not proxy arp
+# this allows arbitary IPs on interfaces
+l2_population = False
 [agent]
-prevent_arp_spoofing = True
+# disable arp spoofing protection to enable arbitrary IPs on VMs without DHCP
+# prevent_arp_spoofing = True
+prevent_arp_spoofing = False
 [securitygroup]
 firewall_driver = neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
 enable_security_group = True
