@@ -100,6 +100,11 @@ rabbit_host = $CONTROLLER_IP
 rabbit_userid = openstack
 rabbit_password = $RABBIT_OS_PASS
 
+# ignore disk allocation for labs
+disk_allocation_ratio = 16.0
+# always for vfat config drive for vmx
+config_drive_format=vfat
+
 [keystone_authtoken]
 auth_uri = http://$CONTROLLER_IP:5000
 auth_url = http://$CONTROLLER_IP:35357
@@ -209,7 +214,7 @@ l2_population = False
 prevent_arp_spoofing = False
 [securitygroup]
 firewall_driver = neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
-enable_security_group = True
+enable_security_group = False
 EOF
 
 echo "--------------------------------"

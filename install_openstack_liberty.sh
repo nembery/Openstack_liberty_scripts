@@ -460,6 +460,10 @@ security_group_api = neutron
 linuxnet_interface_driver = nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
 firewall_driver = nova.virt.firewall.NoopFirewallDriver
 enabled_apis=osapi_compute,metadata
+# ignore disk allocation for labs
+disk_allocation_ratio = 16.0
+# always for vfat config drive for vmx
+config_drive_format=vfat
 [conductor]
 workers = 2
 [database]
