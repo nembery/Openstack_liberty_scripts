@@ -93,17 +93,22 @@ network_api_class = nova.network.neutronv2.api.API
 security_group_api = neutron
 linuxnet_interface_driver = nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
 firewall_driver = nova.virt.firewall.NoopFirewallDriver
+# ignore disk allocation for labs
+disk_allocation_ratio = 16.0
+# always for vfat config drive for vmx
+config_drive_format=vfat
+
+# do not force raw images, allow backing files
+force_raw_images = False
+# ensure no space pre-allocation is done
+preallocate_images = none
+
 verbose = True
 
 [oslo_messaging_rabbit]
 rabbit_host = $CONTROLLER_IP
 rabbit_userid = openstack
 rabbit_password = $RABBIT_OS_PASS
-
-# ignore disk allocation for labs
-disk_allocation_ratio = 16.0
-# always for vfat config drive for vmx
-config_drive_format=vfat
 
 [keystone_authtoken]
 auth_uri = http://$CONTROLLER_IP:5000

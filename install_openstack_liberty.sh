@@ -460,10 +460,17 @@ security_group_api = neutron
 linuxnet_interface_driver = nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
 firewall_driver = nova.virt.firewall.NoopFirewallDriver
 enabled_apis=osapi_compute,metadata
-# ignore disk allocation for labs
+# ignore disk allocation for virtual labs
 disk_allocation_ratio = 16.0
 # always for vfat config drive for vmx
 config_drive_format=vfat
+# leave 8GB of RAM for controller functions
+# comment out to leave at default value of 512MB
+reserved_host_memory_mb = 8192
+# do not force raw images
+force_raw_images = False
+# ensure no space pre-allocation is done
+preallocate_images = none
 [conductor]
 workers = 2
 [database]
@@ -693,7 +700,9 @@ echo "--------------------------"
 apt-get install openstack-dashboard -y
 
 sed -i.default-role.bkup -e 's/OPENSTACK_KEYSTONE_DEFAULT_ROLE = "_member_"/OPENSTACK_KEYSTONE_DEFAULT_ROLE = "user"/' /etc/openstack-dashboard/local_settings.py
-sed -i.multi-domain.bkup -e 's/#OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = False/OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True/' /etc/openstack-dashboard/local_settings.py
+
+# uncomment if you would like multi-domain support, otherwise 'default' will be used
+# sed -i.multi-domain.bkup -e 's/#OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = False/OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True/' /etc/openstack-dashboard/local_settings.py
 
 cat <<EOF >> /etc/openstack-dashboard/local_settings.py
 OPENSTACK_API_VERSIONS = {
